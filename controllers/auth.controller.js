@@ -16,7 +16,7 @@ const generateToken = (id) => {
 // @access  Public
 const register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, fullName, email, password } = req.body;
 
     // Check if user exists
     const userExists = await User.findOne({ $or: [{ email }, { username }] });
@@ -30,6 +30,7 @@ const register = async (req, res) => {
     // Create user
     const user = await User.create({
       username,
+      fullName,
       email,
       password,
     });
@@ -61,10 +62,10 @@ const register = async (req, res) => {
 // @access  Public
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
 
     // Check for user
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ username }).select('+password');
     if (!user) {
       return res.status(401).json({
         success: false,
