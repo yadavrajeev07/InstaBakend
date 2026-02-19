@@ -27,12 +27,15 @@ const register = async (req, res) => {
       });
     }
 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     // Create user
     const user = await User.create({
       username,
       fullName,
       email,
-      password,
+      password: hashedPassword, // <- hashed here
     });
 
     // Generate token
@@ -50,12 +53,14 @@ const register = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error("Register error:", error); // <- log error
     res.status(500).json({
       success: false,
       message: error.message
     });
   }
 };
+
 
 // @desc    Login user
 // @route   POST /api/auth/login

@@ -96,20 +96,42 @@ const updateProfile = async (req, res) => {
 // @desc    Search users
 // @route   GET /api/users/search
 // @access  Private
+// @desc    Search users
+// @route   GET /api/users/search
+// @access  Private
+// @desc    Search users
+// @route   GET /api/users/search
+// @access  Public (no token required)
 const searchUsers = async (req, res) => {
   try {
     const { query } = req.query;
 
-    const users = await User.find({
-      $or: [
-        { username: { $regex: query, $options: 'i' } },
-        { email: { $regex: query, $options: 'i' } }
-      ]
-    }).select('username avatar bio followers following');
+    if (!query || query.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required"
+      });
+    }
 
-    res.json({
+    const users = await User.find({
+      username: { $regex: query, $options: "i" } // match query case-insensitive
+    })
+      .select("username avatar bio followers following")
+      .limit(20);
+
+    const formattedUsers = users.map(user => ({
+      _id: user._id,
+      username: user.username,
+      avatar: user.avatar,
+      bio: user.bio,
+      followerCount: user.followers.length,
+      followingCount: user.following.length,
+      isFollowing: false // can't check without current user
+    }));
+
+    res.status(200).json({
       success: true,
-      users
+      users: formattedUsers
     });
   } catch (error) {
     res.status(500).json({
@@ -119,54 +141,69 @@ const searchUsers = async (req, res) => {
   }
 };
 
+
+
+
+// @desc    Follow/Unfollow user
+// @route   PUT /api/users/:id/follow
+// @access  Private
 // @desc    Follow/Unfollow user
 // @route   PUT /api/users/:id/follow
 // @access  Private
 const followUser = async (req, res) => {
   try {
-    const userToFollow = await User.findById(req.params.id);
-    const currentUser = await User.findById(req.user.id);
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.id;
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot follow yourself"
+      });
+    }
+
+    const userToFollow = await User.findById(targetUserId);
+    const currentUser = await User.findById(currentUserId);
 
     if (!userToFollow) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found"
       });
     }
 
-    // Check if already following
-    const isFollowing = currentUser.following.includes(userToFollow._id);
+    const isFollowing = currentUser.following.includes(targetUserId);
 
     if (isFollowing) {
-      // Unfollow
-      currentUser.following = currentUser.following.filter(
-        id => id.toString() !== userToFollow._id.toString()
-      );
-      userToFollow.followers = userToFollow.followers.filter(
-        id => id.toString() !== currentUser._id.toString()
-      );
+      // 🔴 UNFOLLOW
+      currentUser.following.pull(targetUserId);
+      userToFollow.followers.pull(currentUserId);
     } else {
-      // Follow
-      currentUser.following.push(userToFollow._id);
-      userToFollow.followers.push(currentUser._id);
+      // 🟢 FOLLOW
+      currentUser.following.push(targetUserId);
+      userToFollow.followers.push(currentUserId);
 
       // Create notification
       await Notification.create({
-        user: userToFollow._id,
-        from: currentUser._id,
-        type: 'follow',
-        message: 'started following you'
+        user: targetUserId,
+        from: currentUserId,
+        type: "follow",
+        message: "started following you"
       });
     }
 
     await currentUser.save();
     await userToFollow.save();
 
-    res.json({
+    // ⭐ RETURN CLEAN RESPONSE FOR FRONTEND
+    res.status(200).json({
       success: true,
-      following: isFollowing ? false : true,
-      followers: userToFollow.followers.length
+      isFollowing: !isFollowing,
+      followers: userToFollow.followers,
+      followerCount: userToFollow.followers.length,
+      followingCount: currentUser.following.length
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
